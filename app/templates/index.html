@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Code Analyzer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-okaidia.min.css" rel="stylesheet" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/codemirror.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/mode/python/python.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .container {
+            max-width: 90vw !important;
+        }
+        @media (max-width: 640px) {
+            .container {
+                padding: 1rem !important;
+            }
+            .chat-container {
+                height: auto !important;
+                min-height: 80vh;
+            }
+        }
+        .loading {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 1rem 2rem;
+            border-radius: 0.5rem;
+        }
+        pre code {
+            margin: 0.5rem 0;
+            line-height: 1.5;
+        }
+        .CodeMirror {
+            height: 200px !important;
+            border: 1px solid #4b5563;
+            border-radius: 0.5rem;
+            background: #1f2937;
+            color: #f3f4f6;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100">
+    <div class="loading" id="loading">Analyzing...</div>
+    <div class="container mx-auto p-6">
+        <h1 class="text-3xl font-bold mb-6 text-blue-400">AI Code Quality Analysis Tool</h1>
+        {% if not session_id %}
+        <div class="mb-6">
+            <h2 class="text-xl font-semibold mb-4 text-gray-300">Write or Upload Code</h2>
+            <form action="/analyze" method="post" enctype="multipart/form-data" class="mb-4" id="analyze-form">
+                <div class="flex flex-col sm:flex-row gap-4">
+                    <input type="file" name="file" accept=".py" class="flex-1 p-3 bg-gray-800 border border-gray-700 rounded-lg text-gray-100">
+                    <button type="submit" class="bg-blue-500 text-white p-3 rounded-lg hover:bg-blue-600 transition">Analyze File</button>
+                </div>
+            </form>
+            <form action="/analyze_code" method="post" id="code-form">
+                <textarea name="code" id="code-editor"></textarea>
+                <button type="submit" class="bg-blue-500 text-white p-3 rounded-lg hover:bg-blue-600 transition mt-4">Analyze Code</button>
+            </form>
+        </div>
+        {% else %}
+        <div class="chat-container flex flex-col p-6 border border-gray-700 rounded-lg bg-gray-800 shadow-lg">
+            <div class="chat-history flex-1 overflow-y-auto mb-6 space-y-4">
+                <div class="bg-gray-700 rounded-lg">
+                    <button type="button" class="toggle-btn w-full text-left font-semibold flex justify-between items-center p-4 text-blue-300" onclick="this.nextElementSibling.classList.toggle('hidden'); this.querySelector('.toggle-icon').textContent = this.nextElementSibling.classList.contains('hidden') ? '▼' : '▲'">
+                        Uploaded Code
+                        <span class="toggle-icon">▼</span>
+                    </button>
+                    <div class="toggle-content p-4">
+                        {% if original_code %}
+                        <pre class="overflow-x-auto whitespace-pre-wrap bg-gray-900 rounded-lg p-4 text-sm"><code class="language-python">{{ original_code | safe }}</code></pre>
+                        {% else %}
+                        <p class="text-red-400">Error: No uploaded code available</p>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="bg-gray-700 rounded-lg">
+                    <button type="button" class="toggle-btn w-full text-left font-semibold flex justify-between items-center p-4 text-blue-300" onclick="this.nextElementSibling.classList.toggle('hidden'); this.querySelector('.toggle-icon').textContent = this.nextElementSibling.classList.contains('hidden') ? '▼' : '▲'">
+                        Static Analysis
+                        <span class="toggle-icon">▼</span>
+                    </button>
+                    <div class="toggle-content p-4">
+                        <pre class="overflow-x-auto whitespace-pre-wrap bg-gray-900 rounded-lg p-4 text-sm"><code class="language-json">{{ static_result | tojson(indent=2) | safe }}</code></pre>
+                    </div>
+                </div>
+                <div class="bg-gray-700 rounded-lg">
+                    <button type="button" class="toggle-btn w-full text-left font-semibold flex justify-between items-center p-4 text-blue-300" onclick="this.nextElementSibling.classList.toggle('hidden'); this.querySelector('.toggle-icon').textContent = this.nextElementSibling.classList.contains('hidden') ? '▼' : '▲'">
+                        AI Analysis
+                        <span class="toggle-icon">▼</span>
+                    </button>
+                    <div class="toggle-content p-4 space-y-4">
+                        <div>
+                            <strong class="text-blue-300">Bugs:</strong>
+                            <pre class="overflow-x-auto whitespace-pre-wrap bg-gray-900 rounded-lg p-4 text-sm"><code class="language-json">{{ ai_result.bugs | tojson(indent=2) | safe }}</code></pre>
+                        </div>
+                        <div>
+                            <strong class="text-blue-300">Issues Severity:</strong>
+                            <pre class="overflow-x-auto whitespace-pre-wrap bg-gray-900 rounded-lg p-4 text-sm"><code class="language-json">{{ ai_result.issues_severity | tojson(indent=2) | safe }}</code></pre>
+                        </div>
+                        <div>
+                            <strong class="text-blue-300">Optimized Code:</strong>
+                            <pre class="overflow-x-auto whitespace-pre-wrap bg-gray-900 rounded-lg p-4 text-sm"><code class="language-python">{{ ai_result.optimized_code | safe }}</code></pre>
+                        </div>
+                        <div>
+                            <strong class="text-blue-300">Refactoring Suggestions:</strong>
+                            {% for suggestion in ai_result.refactoring_suggestions %}
+                            <div class="mb-4">
+                                <p class="text-gray-300">{{ suggestion.description }}</p>
+                                {% if suggestion.example_code %}
+                                <pre class="overflow-x-auto whitespace-pre-wrap bg-gray-900 rounded-lg p-4 text-sm"><code class="language-python">{{ suggestion.example_code | safe }}</code></pre>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-gray-700 rounded-lg">
+                    <button type="button" class="toggle-btn w-full text-left font-semibold flex justify-between items-center p-4 text-blue-300" onclick="this.nextElementSibling.classList.toggle('hidden'); this.querySelector('.toggle-icon').textContent = this.nextElementSibling.classList.contains('hidden') ? '▼' : '▲'">
+                        Readability Analysis
+                        <span class="toggle-icon">▼</span>
+                    </button>
+                    <div class="toggle-content p-4">
+                        <pre class="overflow-x-auto whitespace-pre-wrap bg-gray-900 rounded-lg p-4 text-sm"><code class="language-json">{{ readability_result | tojson(indent=2) | safe }}</code></pre>
+                    </div>
+                </div>
+                <div class="bg-gray-700 rounded-lg">
+                    <button type="button" class="toggle-btn w-full text-left font-semibold flex justify-between items-center p-4 text-blue-300" onclick="this.nextElementSibling.classList.toggle('hidden'); this.querySelector('.toggle-icon').textContent = this.nextElementSibling.classList.contains('hidden') ? '▼' : '▲'">
+                        Complexity Chart
+                        <span class="toggle-icon">▼</span>
+                    </button>
+                    <div class="toggle-content p-4">
+                        <div>{{ complexity_chart.chart_html | safe }}</div>
+                    </div>
+                </div>
+            </div>
+            <div class="flex justify-between items-center mb-4">
+                <form action="/regenerate" method="post" class="flex flex-1 gap-4">
+                    <input type="hidden" name="session_id" value="{{ session_id }}">
+                    <input type="text" name="user_command" class="flex-1 p-3 bg-gray-800 border border-gray-700 rounded-lg text-gray-100" placeholder="e.g., Use list comprehension instead of loop">
+                    <button type="submit" class="bg-blue-500 text-white p-3 rounded-lg hover:bg-blue-600 transition">Submit</button>
+                </form>
+                <a href="/export/{{ session_id }}" class="bg-green-500 text-white p-3 rounded-lg hover:bg-green-600 transition ml-4">Export Analysis</a>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            Prism.highlightAll();
+            document.querySelectorAll('.toggle-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const icon = btn.querySelector('.toggle-icon');
+                    icon.textContent = icon.textContent === '▼' ? '▲' : '▼';
+                });
+            });
+            const form = document.getElementById('analyze-form');
+            if (form) {
+                form.addEventListener('submit', () => {
+                    document.getElementById('loading').style.display = 'block';
+                });
+            }
+            const codeForm = document.getElementById('code-form');
+            if (codeForm) {
+                const editor = CodeMirror.fromTextArea(document.getElementById('code-editor'), {
+                    mode: 'python',
+                    theme: 'monokai',
+                    lineNumbers: true,
+                    indentUnit: 4
+                });
+                codeForm.addEventListener('submit', () => {
+                    document.getElementById('loading').style.display = 'block';
+                });
+            }
+        });
+    </script>
+</body>
+</html>

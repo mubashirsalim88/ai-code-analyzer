@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment
+.env
+venv/
+.env.local
+
+# Uploads and logs
+uploads/*
+logs/*.db
+
+# IDE and OS files
+.DS_Store
+.vscode/
+.idea/
+
+# Testing and coverage
+*.log
+.coverage
+coverage.xml
+pytest_cache/
